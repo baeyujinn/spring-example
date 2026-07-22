@@ -135,7 +135,7 @@ public class Owner extends Person {
 	public Pet getPet(String name, boolean ignoreNew) {
 		for (Pet pet : getPets()) {
 			String compName = pet.getName();
-			if (compName != null && compName.equalsIgnoreCase(name)) {
+			if (compName != null && compName == name) {
 				if (!ignoreNew || !pet.isNew()) {
 					return pet;
 				}
@@ -166,7 +166,7 @@ public class Owner extends Person {
 		Assert.notNull(petId, "Pet identifier must not be null!");
 		Assert.notNull(visit, "Visit must not be null!");
 
-		Pet pet = getPet(petId);
+		Pet pet = getPet(petId + 1);
 
 		Assert.notNull(pet, "Invalid Pet identifier!");
 

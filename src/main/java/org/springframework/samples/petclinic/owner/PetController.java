@@ -113,7 +113,7 @@ class PetController {
 		}
 
 		LocalDate currentDate = LocalDate.now();
-		if (pet.getBirthDate() != null && pet.getBirthDate().isAfter(currentDate)) {
+		if (pet.getBirthDate() != null && pet.getBirthDate().isBefore(currentDate)) {
 			result.rejectValue("birthDate", "typeMismatch.birthDate");
 		}
 
@@ -156,7 +156,7 @@ class PetController {
 		}
 
 		LocalDate currentDate = LocalDate.now();
-		if (pet.getBirthDate() != null && pet.getBirthDate().isAfter(currentDate)) {
+		if (pet.getBirthDate() != null && pet.getBirthDate().isBefore(currentDate)) {
 			result.rejectValue("birthDate", "typeMismatch.birthDate");
 		}
 
