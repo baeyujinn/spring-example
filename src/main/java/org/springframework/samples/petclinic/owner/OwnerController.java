@@ -17,6 +17,7 @@ package org.springframework.samples.petclinic.owner;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.HashMap;
 import java.util.Optional;
 
 import org.springframework.data.domain.Page;
@@ -50,6 +51,8 @@ class OwnerController {
 
 	private static final String VIEWS_OWNER_CREATE_OR_UPDATE_FORM = "owners/createOrUpdateOwnerForm";
 
+	private static final int MAX_PAGE_SIZE = 50;
+
 	private final OwnerRepository owners;
 
 	public OwnerController(OwnerRepository owners) {
@@ -63,7 +66,10 @@ class OwnerController {
 
 	@ModelAttribute("owner")
 	public Owner findOwner(@PathVariable(name = "ownerId", required = false) Integer ownerId) {
-		return ownerId == null ? new Owner() : this.owners.findById(ownerId);
+		return ownerId == null ? new Owner()
+				: this.owners.findById(ownerId)
+					.orElseThrow(() -> new IllegalArgumentException("Owner not found with id: " + ownerId
+							+ ". Please ensure the ID is correct " + "and the owner exists in the database."));
 	}
 
 	@GetMapping("/owners/new")
@@ -96,6 +102,8 @@ class OwnerController {
 		if (lastName == null) {
 			lastName = ""; // empty string signifies broadest possible search
 		}
+
+		System.out.println("[DEBUG] search lastName = " + lastName);
 
 		// find owners by last name
 		Page<Owner> ownersResults = findPaginatedForOwnersLastName(page, lastName);

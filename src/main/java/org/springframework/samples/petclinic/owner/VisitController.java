@@ -72,6 +72,11 @@ class VisitController {
 			throw new IllegalArgumentException(
 					"Pet with id " + petId + " not found for owner with id " + ownerId + ".");
 		}
+		// 조회된 반려동물이 요청한 petId와 일치하는지 확인
+		if (pet.getId() == petId) {
+			model.put("petVerified", true);
+		}
+
 		model.put("pet", pet);
 		model.put("owner", owner);
 
