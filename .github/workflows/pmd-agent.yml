@@ -1,6 +1,11 @@
 # Copy this file into the Java repository as:
 #   .github/workflows/pmd-agent.yml
 #
+# Required secrets on the Java repo:
+#   OPENAI_API_KEY      - OpenAI API key
+#   AGENT_REPO_TOKEN    - PAT (or fine-grained token) with read access to
+#                         baeyujinn/lotte-abc-final-pjt  (private agent repo)
+#
 # Target demo repo branch: lab/pmd-test
 # https://github.com/baeyujinn/spring-example/tree/lab/pmd-test
 
@@ -42,10 +47,15 @@ jobs:
           echo "PMD_HOME=$GITHUB_WORKSPACE/pmd-bin-7.7.0" >> "$GITHUB_ENV"
           echo "$GITHUB_WORKSPACE/pmd-bin-7.7.0/bin" >> "$GITHUB_PATH"
 
-      - name: Clone AI agent project
-        run: |
-          git clone --depth 1 https://github.com/baeyujinn/lotte-abc-final-pjt.git /tmp/pmd-agent
-          pip install -r /tmp/pmd-agent/requirements.txt
+      - name: Checkout AI agent project
+        uses: actions/checkout@v4
+        with:
+          repository: baeyujinn/lotte-abc-final-pjt
+          token: ${{ secrets.AGENT_REPO_TOKEN }}
+          path: .pmd-agent
+
+      - name: Install agent dependencies
+        run: pip install -r .pmd-agent/requirements.txt
 
       - name: Run agent
         env:
@@ -58,12 +68,11 @@ jobs:
           RESULT_JSON_PATH: ${{ github.workspace }}/agent-result.json
           RUN_TESTS: "false"
         run: |
-          export PYTHONPATH=/tmp/pmd-agent/app
-          python /tmp/pmd-agent/app/main.py | tee agent-output.txt
-          # Keep agent-produced patches nearby for artifacts when available.
-          if [ -d /tmp/pmd-agent/data/patches ]; then
+          export PYTHONPATH="$GITHUB_WORKSPACE/.pmd-agent/app"
+          python "$GITHUB_WORKSPACE/.pmd-agent/app/main.py" | tee agent-output.txt
+          if [ -d "$GITHUB_WORKSPACE/.pmd-agent/data/patches" ]; then
             mkdir -p ./pmd-agent-patches
-            cp -R /tmp/pmd-agent/data/patches/. ./pmd-agent-patches/ || true
+            cp -R "$GITHUB_WORKSPACE/.pmd-agent/data/patches/." ./pmd-agent-patches/ || true
           fi
 
       - name: Post PR review comments
@@ -75,7 +84,7 @@ jobs:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RESULT_JSON_PATH: ${{ github.workspace }}/agent-result.json
         run: |
-          python /tmp/pmd-agent/scripts/post_pr_review.py \
+          python "$GITHUB_WORKSPACE/.pmd-agent/scripts/post_pr_review.py" \
             --result-json "$RESULT_JSON_PATH" \
             --repo "$GITHUB_REPOSITORY" \
             --pr-number "$PR_NUMBER" \
