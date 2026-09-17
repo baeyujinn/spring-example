@@ -2,7 +2,7 @@
 #   .github/workflows/pmd-agent.yml
 #
 # Required secrets on the Java repo (Settings → Secrets and variables → Actions):
-#   OPENAI_API_KEY      - OpenAI API key
+#   OPENAI_API_KEY      - raw key only (sk-...), no quotes / no OPENAI_API_KEY= prefix
 #   AGENT_REPO_TOKEN    - PAT with read access to baeyujinn/lotte-abc-final-pjt
 #
 # Target demo repo branch: lab/pmd-test
@@ -22,17 +22,30 @@ jobs:
       pull-requests: write
 
     steps:
-      - name: Verify AGENT_REPO_TOKEN secret
+      - name: Verify secrets
         env:
           AGENT_REPO_TOKEN: ${{ secrets.AGENT_REPO_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           if [ -z "$AGENT_REPO_TOKEN" ]; then
             echo "::error::Repository secret AGENT_REPO_TOKEN is missing or empty."
-            echo "Add it at: Settings → Secrets and variables → Actions"
-            echo "Use a PAT that can read baeyujinn/lotte-abc-final-pjt (Contents: Read)."
             exit 1
           fi
-          echo "AGENT_REPO_TOKEN is present."
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "::error::Repository secret OPENAI_API_KEY is missing or empty."
+            exit 1
+          fi
+          # Detect common paste mistakes without printing the secret.
+          KEY_LEN=${#OPENAI_API_KEY}
+          if printf '%s' "$OPENAI_API_KEY" | grep -q $'\n'; then
+            echo "::error::OPENAI_API_KEY contains a newline. Re-paste the raw sk- key only."
+            exit 1
+          fi
+          if printf '%s' "$OPENAI_API_KEY" | grep -qi '^openai_api_key='; then
+            echo "::error::OPENAI_API_KEY looks like KEY=value. Store only the key value."
+            exit 1
+          fi
+          echo "Secrets present (OPENAI_API_KEY length=${KEY_LEN})."
 
       - name: Checkout Java PR code
         uses: actions/checkout@v5
@@ -79,6 +92,17 @@ jobs:
           RESULT_JSON_PATH: ${{ github.workspace }}/agent-result.json
           RUN_TESTS: "false"
         run: |
+          # Strip accidental whitespace/newlines from the secret.
+          export OPENAI_API_KEY="$(printf '%s' "$OPENAI_API_KEY" | tr -d '\r\n' | sed -e 's/^["'\'']//' -e 's/["'\'']$//')"
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          CHANGED_JAVA="$(git diff --name-only --diff-filter=ACMR "${BASE_SHA}...HEAD" | grep '\.java$' || true)"
+          if [ -n "$CHANGED_JAVA" ]; then
+            export PMD_CHANGED_FILES="$(printf '%s' "$CHANGED_JAVA" | paste -sd, -)"
+            echo "Analyzing PR Java files:"
+            printf '%s\n' "$CHANGED_JAVA"
+          else
+            echo "No Java files changed in this PR; agent will likely skip."
+          fi
           export PYTHONPATH="$GITHUB_WORKSPACE/.pmd-agent/app"
           python "$GITHUB_WORKSPACE/.pmd-agent/app/main.py" | tee agent-output.txt
           if [ -d "$GITHUB_WORKSPACE/.pmd-agent/data/patches" ]; then
