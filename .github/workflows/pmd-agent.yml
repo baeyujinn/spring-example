@@ -88,11 +88,16 @@ jobs:
           JUDGE_MODEL: ${{ vars.JUDGE_MODEL || 'gpt-4o-mini' }}
           PATCH_MODEL: ${{ vars.PATCH_MODEL || 'gpt-4o-mini' }}
           TARGET_REPO_PATH: ${{ github.workspace }}
+          # Keep the PR checkout. Without this the agent resets to lab/bug-hunt3.
+          SKIP_TARGET_BRANCH_CHECKOUT: "true"
+          TARGET_REPO_BRANCH: ""
           PMD_SOURCE_DIR: src/main/java
           PMD_REPORT_PATH: ${{ github.workspace }}/pmd-report.xml
           RESULT_JSON_PATH: ${{ github.workspace }}/agent-result.json
           RUN_TESTS: "false"
         run: |
+          echo "Target HEAD: $(git rev-parse HEAD)"
+          echo "Target branch: $(git rev-parse --abbrev-ref HEAD)"
           BASE_SHA="${{ github.event.pull_request.base.sha }}"
           CHANGED_JAVA="$(git diff --name-only --diff-filter=ACMR "${BASE_SHA}...HEAD" | grep '\.java$' || true)"
           if [ -n "$CHANGED_JAVA" ]; then
