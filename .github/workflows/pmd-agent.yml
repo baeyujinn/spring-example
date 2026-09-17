@@ -5,8 +5,8 @@
 #   OPENAI_API_KEY      - raw key only (sk-...), no quotes / no OPENAI_API_KEY= prefix
 #   AGENT_REPO_TOKEN    - PAT with read access to baeyujinn/lotte-abc-final-pjt
 #
-# Target demo repo branch: lab/pmd-test
-# https://github.com/baeyujinn/spring-example/tree/lab/pmd-test
+# Target: any PR on spring-example (e.g. lab/bug-hunt3 → lab/bug-hunt2)
+# https://github.com/baeyujinn/spring-example
 
 name: PMD AI Agent
 
@@ -52,7 +52,8 @@ jobs:
       - name: Checkout Java PR code
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.head_ref }}
+          # Prefer the PR head SHA so this works for any base branch (e.g. lab/bug-hunt2).
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
       - name: Setup Java
