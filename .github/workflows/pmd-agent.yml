@@ -20,6 +20,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+      issues: write
 
     steps:
       - name: Verify secrets
@@ -116,19 +117,28 @@ jobs:
           fi
 
       - name: Post PR review comments
-        if: always() && hashFiles('agent-result.json') != ''
+        if: always()
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RESULT_JSON_PATH: ${{ github.workspace }}/agent-result.json
         run: |
+          set -euo pipefail
+          if [ ! -f "$RESULT_JSON_PATH" ]; then
+            echo "::error::agent-result.json missing; cannot post comments."
+            ls -la "$GITHUB_WORKSPACE" | head -50
+            exit 1
+          fi
+          echo "Posting comments for PR #$PR_NUMBER on $GITHUB_REPOSITORY @ $PR_HEAD_SHA"
           python "$GITHUB_WORKSPACE/.pmd-agent/scripts/post_pr_review.py" \
             --result-json "$RESULT_JSON_PATH" \
             --repo "$GITHUB_REPOSITORY" \
             --pr-number "$PR_NUMBER" \
-            --commit-sha "$PR_HEAD_SHA"
+            --commit-sha "$PR_HEAD_SHA" \
+            --token "$GITHUB_TOKEN"
 
       - name: Upload report
         if: always()
