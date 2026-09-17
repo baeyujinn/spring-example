@@ -1,0 +1,160 @@
+# Copy this file into the Java repository as:
+#   .github/workflows/pmd-agent.yml
+#
+# Required secrets on the Java repo (Settings → Secrets and variables → Actions):
+#   OPENAI_API_KEY      - raw key only (sk-...), no quotes / no OPENAI_API_KEY= prefix
+#   AGENT_REPO_TOKEN    - PAT with read access to baeyujinn/lotte-abc-final-pjt
+#
+# Target: any PR on spring-example (e.g. lab/bug-hunt3 → lab/bug-hunt2)
+# https://github.com/baeyujinn/spring-example
+
+name: PMD AI Agent
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  pmd-agent:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Verify secrets
+        env:
+          AGENT_REPO_TOKEN: ${{ secrets.AGENT_REPO_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "$AGENT_REPO_TOKEN" ]; then
+            echo "::error::Repository secret AGENT_REPO_TOKEN is missing or empty."
+            exit 1
+          fi
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "::error::Repository secret OPENAI_API_KEY is missing or empty."
+            exit 1
+          fi
+          # GitHub secret UI often stores a trailing newline; strip it instead of failing.
+          CLEAN_KEY="$(printf '%s' "$OPENAI_API_KEY" | tr -d '\r\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^["'\'']//' -e 's/["'\'']$//')"
+          if [ -z "$CLEAN_KEY" ]; then
+            echo "::error::OPENAI_API_KEY is empty after cleanup."
+            exit 1
+          fi
+          if printf '%s' "$CLEAN_KEY" | grep -qi '^openai_api_key='; then
+            echo "::error::OPENAI_API_KEY looks like KEY=value. Store only the key value."
+            exit 1
+          fi
+          echo "Secrets present (OPENAI_API_KEY length=${#CLEAN_KEY})."
+          # Expose cleaned key to later steps (no trailing newline).
+          echo "OPENAI_API_KEY=${CLEAN_KEY}" >> "$GITHUB_ENV"
+
+      - name: Checkout Java PR code
+        uses: actions/checkout@v5
+        with:
+          # Prefer the PR head SHA so this works for any base branch (e.g. lab/bug-hunt2).
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install PMD
+        run: |
+          curl --fail --show-error --silent --location --proto '=https' --tlsv1.2 \
+            https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.7.0/pmd-dist-7.7.0-bin.zip \
+            -o pmd.zip
+          unzip -q pmd.zip
+          echo "PMD_HOME=$GITHUB_WORKSPACE/pmd-bin-7.7.0" >> "$GITHUB_ENV"
+          echo "$GITHUB_WORKSPACE/pmd-bin-7.7.0/bin" >> "$GITHUB_PATH"
+
+      - name: Checkout AI agent project
+        uses: actions/checkout@v5
+        with:
+          repository: baeyujinn/lotte-abc-final-pjt
+          token: ${{ secrets.AGENT_REPO_TOKEN }}
+          path: .pmd-agent
+
+      - name: Install agent dependencies
+        run: pip install -r .pmd-agent/requirements.txt
+
+      - name: Test agent safety checks
+        env:
+          PYTHONPATH: ${{ github.workspace }}/.pmd-agent/app
+        run: python -m unittest discover -s .pmd-agent/tests -v
+
+      - name: Run agent
+        env:
+          JUDGE_MODEL: ${{ vars.JUDGE_MODEL || 'gpt-5.6-terra' }}
+          PATCH_MODEL: ${{ vars.PATCH_MODEL || 'gpt-5.6-terra' }}
+          TARGET_REPO_PATH: ${{ github.workspace }}
+          # Keep the PR checkout. Without this the agent resets to lab/bug-hunt3.
+          SKIP_TARGET_BRANCH_CHECKOUT: "true"
+          TARGET_REPO_BRANCH: ""
+          PMD_SOURCE_DIR: src/main/java
+          PMD_REPORT_PATH: ${{ github.workspace }}/pmd-report.xml
+          RESULT_JSON_PATH: ${{ github.workspace }}/agent-result.json
+          RUN_TESTS: "true"
+        run: |
+          set -o pipefail
+          echo "Target HEAD: $(git rev-parse HEAD)"
+          echo "Target branch: $(git rev-parse --abbrev-ref HEAD)"
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          CHANGED_JAVA="$(git diff --name-only --diff-filter=ACMR "${BASE_SHA}...HEAD" | grep '\.java$' || true)"
+          if [ -n "$CHANGED_JAVA" ]; then
+            export PMD_CHANGED_FILES="$(printf '%s' "$CHANGED_JAVA" | paste -sd, -)"
+            echo "Analyzing PR Java files:"
+            printf '%s\n' "$CHANGED_JAVA"
+          else
+            echo "No Java files changed in this PR; agent will likely skip."
+          fi
+          export PYTHONPATH="$GITHUB_WORKSPACE/.pmd-agent/app"
+          set +e
+          python "$GITHUB_WORKSPACE/.pmd-agent/app/main.py" | tee agent-output.txt
+          AGENT_EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+          if [ -d "$GITHUB_WORKSPACE/.pmd-agent/data/patches" ]; then
+            mkdir -p ./pmd-agent-patches
+            cp -R "$GITHUB_WORKSPACE/.pmd-agent/data/patches/." ./pmd-agent-patches/ || true
+          fi
+          exit "$AGENT_EXIT_CODE"
+
+      - name: Post PR review comments
+        if: always() && hashFiles('agent-result.json') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RESULT_JSON_PATH: ${{ github.workspace }}/agent-result.json
+        run: |
+          set -euo pipefail
+          echo "Posting comments for PR #$PR_NUMBER on $GITHUB_REPOSITORY @ $PR_HEAD_SHA"
+          python "$GITHUB_WORKSPACE/.pmd-agent/scripts/post_pr_review.py" \
+            --result-json "$RESULT_JSON_PATH" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pr-number "$PR_NUMBER" \
+            --commit-sha "$PR_HEAD_SHA" \
+            --token "$GITHUB_TOKEN"
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pmd-agent-output
+          path: |
+            agent-output.txt
+            agent-result.json
+            pmd-report.xml
+            pmd-agent-patches/
+          if-no-files-found: warn

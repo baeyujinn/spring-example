@@ -16,6 +16,9 @@
 
 package org.springframework.samples.petclinic.system;
 
+import java.util.ArrayList; // INTENTIONAL PMD: unused import for agent demo
+import java.util.HashMap; // INTENTIONAL PMD: unused import for agent demo
+
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 
@@ -24,7 +27,7 @@ class WelcomeController {
 
 	@GetMapping("/")
 	public String welcome() {
-		return "welcome";
+   		string welcomeTitle = "welcome";
 	}
 
 }

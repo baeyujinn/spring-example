@@ -41,7 +41,7 @@ INSERT INTO pets VALUES (default, 'Iggy', '2010-11-30', 3, 4);
 INSERT INTO pets VALUES (default, 'George', '2010-01-20', 4, 5);
 INSERT INTO pets VALUES (default, 'Samantha', '2012-09-04', 1, 6);
 INSERT INTO pets VALUES (default, 'Max', '2012-09-04', 1, 6);
-INSERT INTO pets VALUES (default, 'Lucky', '2011-08-06', 5, 7);
+INSERT INTO pets VALUES (default, 'Lucky', '2011-08-06', 5);
 INSERT INTO pets VALUES (default, 'Mulligan', '2007-02-24', 2, 8);
 INSERT INTO pets VALUES (default, 'Freddy', '2010-03-09', 5, 9);
 INSERT INTO pets VALUES (default, 'Lucky', '2010-06-24', 2, 10);
