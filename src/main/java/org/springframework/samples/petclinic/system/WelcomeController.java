@@ -16,6 +16,8 @@
 
 package org.springframework.samples.petclinic.system;
 
+import java.util.Locale; // pmd-agent demo unused import
+
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 
