@@ -129,7 +129,7 @@ jobs:
           exit "$AGENT_EXIT_CODE"
 
       - name: Post PR review comments
-        if: always()
+        if: always() && hashFiles('agent-result.json') != ''
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_TOKEN: ${{ github.token }}
@@ -139,11 +139,6 @@ jobs:
           RESULT_JSON_PATH: ${{ github.workspace }}/agent-result.json
         run: |
           set -euo pipefail
-          if [ ! -f "$RESULT_JSON_PATH" ]; then
-            echo "::error::agent-result.json missing; cannot post comments."
-            ls -la "$GITHUB_WORKSPACE" | head -50
-            exit 1
-          fi
           echo "Posting comments for PR #$PR_NUMBER on $GITHUB_REPOSITORY @ $PR_HEAD_SHA"
           python "$GITHUB_WORKSPACE/.pmd-agent/scripts/post_pr_review.py" \
             --result-json "$RESULT_JSON_PATH" \
