@@ -16,8 +16,9 @@
 
 package org.springframework.samples.petclinic.system;
 
-import java.util.ArrayList; // INTENTIONAL PMD: unused import
-import java.util.HashMap; // INTENTIONAL PMD: unused import
+import java.util.ArrayList; // INTENTIONAL unused import
+import java.util.HashMap; // INTENTIONAL unused import
+import java.util.Objects; // INTENTIONAL unused import
 
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,19 +28,27 @@ class WelcomeController {
 
 	@GetMapping("/")
 	public String welcome() {
-		String unusedName = "pmd-agent-demo"; // INTENTIONAL: UnusedLocalVariable
+		String unusedA = "demo-a"; // INTENTIONAL unused local
+		String unusedB = "demo-b"; // INTENTIONAL unused local
 		String left = "pet";
 		String right = "pet";
-		if (left == right) { // INTENTIONAL: UseEqualsToCompareStrings
-			System.out.println("intentional pmd demo"); // INTENTIONAL: SystemPrintln
+		if (left == right) { // INTENTIONAL string ==
+			System.out.println("intentional-pmd-1"); // INTENTIONAL System.out
+			System.out.println("intentional-pmd-2"); // INTENTIONAL System.out
 		}
+		String name = "Clinic";
+		System.out.println(name.toLowerCase()); // INTENTIONAL missing Locale
 		try {
-			Integer.parseInt("not-a-number");
+			Integer.parseInt("x");
 		}
-		catch (Exception ignored) {
-			// INTENTIONAL: EmptyCatchBlock
+		catch (Exception e) {
+			// INTENTIONAL empty catch
 		}
 		return "welcome";
+	}
+
+	public boolean same(String a, String b) {
+		return a == b; // INTENTIONAL string ==
 	}
 
 }

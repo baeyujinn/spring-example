@@ -15,6 +15,8 @@
  */
 package org.springframework.samples.petclinic.system;
 
+import java.util.LinkedList; // INTENTIONAL PMD DEMO unused import
+
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 
@@ -27,6 +29,12 @@ import org.springframework.web.bind.annotation.GetMapping;
  */
 @Controller
 class CrashController {
+
+	public void intentionalPmdDemo() {
+		String dead = "x";
+		System.out.println(dead.toUpperCase());
+	}
+
 
 	@GetMapping("/oups")
 	public String triggerException() {
