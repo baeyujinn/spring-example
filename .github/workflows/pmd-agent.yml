@@ -5,8 +5,8 @@
 #   OPENAI_API_KEY      - raw key only (sk-...), no quotes / no OPENAI_API_KEY= prefix
 #   AGENT_REPO_TOKEN    - PAT with read access to baeyujinn/lotte-abc-final-pjt
 #
-# Target demo repo branch: lab/pmd-test
-# https://github.com/baeyujinn/spring-example/tree/lab/pmd-test
+# Target: any PR on spring-example (e.g. lab/bug-hunt3 → lab/bug-hunt2)
+# https://github.com/baeyujinn/spring-example
 
 name: PMD AI Agent
 
@@ -20,6 +20,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+      issues: write
 
     steps:
       - name: Verify secrets
@@ -52,7 +53,8 @@ jobs:
       - name: Checkout Java PR code
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.head_ref }}
+          # Prefer the PR head SHA so this works for any base branch (e.g. lab/bug-hunt2).
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
       - name: Setup Java
@@ -68,7 +70,9 @@ jobs:
 
       - name: Install PMD
         run: |
-          curl -sL https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.7.0/pmd-dist-7.7.0-bin.zip -o pmd.zip
+          curl --fail --show-error --silent --location --proto '=https' --tlsv1.2 \
+            https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.7.0/pmd-dist-7.7.0-bin.zip \
+            -o pmd.zip
           unzip -q pmd.zip
           echo "PMD_HOME=$GITHUB_WORKSPACE/pmd-bin-7.7.0" >> "$GITHUB_ENV"
           echo "$GITHUB_WORKSPACE/pmd-bin-7.7.0/bin" >> "$GITHUB_PATH"
@@ -83,10 +87,15 @@ jobs:
       - name: Install agent dependencies
         run: pip install -r .pmd-agent/requirements.txt
 
+      - name: Test agent safety checks
+        env:
+          PYTHONPATH: ${{ github.workspace }}/.pmd-agent/app
+        run: python -m unittest discover -s .pmd-agent/tests -v
+
       - name: Run agent
         env:
-          JUDGE_MODEL: ${{ vars.JUDGE_MODEL || 'gpt-4o-mini' }}
-          PATCH_MODEL: ${{ vars.PATCH_MODEL || 'gpt-4o-mini' }}
+          JUDGE_MODEL: ${{ vars.JUDGE_MODEL || 'gpt-5.6-terra' }}
+          PATCH_MODEL: ${{ vars.PATCH_MODEL || 'gpt-5.6-terra' }}
           TARGET_REPO_PATH: ${{ github.workspace }}
           # Keep the PR checkout. Without this the agent resets to lab/bug-hunt3.
           SKIP_TARGET_BRANCH_CHECKOUT: "true"
@@ -94,8 +103,9 @@ jobs:
           PMD_SOURCE_DIR: src/main/java
           PMD_REPORT_PATH: ${{ github.workspace }}/pmd-report.xml
           RESULT_JSON_PATH: ${{ github.workspace }}/agent-result.json
-          RUN_TESTS: "false"
+          RUN_TESTS: "true"
         run: |
+          set -o pipefail
           echo "Target HEAD: $(git rev-parse HEAD)"
           echo "Target branch: $(git rev-parse --abbrev-ref HEAD)"
           BASE_SHA="${{ github.event.pull_request.base.sha }}"
@@ -108,26 +118,39 @@ jobs:
             echo "No Java files changed in this PR; agent will likely skip."
           fi
           export PYTHONPATH="$GITHUB_WORKSPACE/.pmd-agent/app"
+          set +e
           python "$GITHUB_WORKSPACE/.pmd-agent/app/main.py" | tee agent-output.txt
+          AGENT_EXIT_CODE=${PIPESTATUS[0]}
+          set -e
           if [ -d "$GITHUB_WORKSPACE/.pmd-agent/data/patches" ]; then
             mkdir -p ./pmd-agent-patches
             cp -R "$GITHUB_WORKSPACE/.pmd-agent/data/patches/." ./pmd-agent-patches/ || true
           fi
+          exit "$AGENT_EXIT_CODE"
 
       - name: Post PR review comments
-        if: always() && hashFiles('agent-result.json') != ''
+        if: always()
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RESULT_JSON_PATH: ${{ github.workspace }}/agent-result.json
         run: |
+          set -euo pipefail
+          if [ ! -f "$RESULT_JSON_PATH" ]; then
+            echo "::error::agent-result.json missing; cannot post comments."
+            ls -la "$GITHUB_WORKSPACE" | head -50
+            exit 1
+          fi
+          echo "Posting comments for PR #$PR_NUMBER on $GITHUB_REPOSITORY @ $PR_HEAD_SHA"
           python "$GITHUB_WORKSPACE/.pmd-agent/scripts/post_pr_review.py" \
             --result-json "$RESULT_JSON_PATH" \
             --repo "$GITHUB_REPOSITORY" \
             --pr-number "$PR_NUMBER" \
-            --commit-sha "$PR_HEAD_SHA"
+            --commit-sha "$PR_HEAD_SHA" \
+            --token "$GITHUB_TOKEN"
 
       - name: Upload report
         if: always()
