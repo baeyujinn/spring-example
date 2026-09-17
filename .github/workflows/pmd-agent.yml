@@ -1,10 +1,9 @@
 # Copy this file into the Java repository as:
 #   .github/workflows/pmd-agent.yml
 #
-# Required secrets on the Java repo:
+# Required secrets on the Java repo (Settings → Secrets and variables → Actions):
 #   OPENAI_API_KEY      - OpenAI API key
-#   AGENT_REPO_TOKEN    - PAT (or fine-grained token) with read access to
-#                         baeyujinn/lotte-abc-final-pjt  (private agent repo)
+#   AGENT_REPO_TOKEN    - PAT with read access to baeyujinn/lotte-abc-final-pjt
 #
 # Target demo repo branch: lab/pmd-test
 # https://github.com/baeyujinn/spring-example/tree/lab/pmd-test
@@ -23,20 +22,32 @@ jobs:
       pull-requests: write
 
     steps:
+      - name: Verify AGENT_REPO_TOKEN secret
+        env:
+          AGENT_REPO_TOKEN: ${{ secrets.AGENT_REPO_TOKEN }}
+        run: |
+          if [ -z "$AGENT_REPO_TOKEN" ]; then
+            echo "::error::Repository secret AGENT_REPO_TOKEN is missing or empty."
+            echo "Add it at: Settings → Secrets and variables → Actions"
+            echo "Use a PAT that can read baeyujinn/lotte-abc-final-pjt (Contents: Read)."
+            exit 1
+          fi
+          echo "AGENT_REPO_TOKEN is present."
+
       - name: Checkout Java PR code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
@@ -48,7 +59,7 @@ jobs:
           echo "$GITHUB_WORKSPACE/pmd-bin-7.7.0/bin" >> "$GITHUB_PATH"
 
       - name: Checkout AI agent project
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: baeyujinn/lotte-abc-final-pjt
           token: ${{ secrets.AGENT_REPO_TOKEN }}
