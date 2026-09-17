@@ -35,17 +35,19 @@ jobs:
             echo "::error::Repository secret OPENAI_API_KEY is missing or empty."
             exit 1
           fi
-          # Detect common paste mistakes without printing the secret.
-          KEY_LEN=${#OPENAI_API_KEY}
-          if printf '%s' "$OPENAI_API_KEY" | grep -q $'\n'; then
-            echo "::error::OPENAI_API_KEY contains a newline. Re-paste the raw sk- key only."
+          # GitHub secret UI often stores a trailing newline; strip it instead of failing.
+          CLEAN_KEY="$(printf '%s' "$OPENAI_API_KEY" | tr -d '\r\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^["'\'']//' -e 's/["'\'']$//')"
+          if [ -z "$CLEAN_KEY" ]; then
+            echo "::error::OPENAI_API_KEY is empty after cleanup."
             exit 1
           fi
-          if printf '%s' "$OPENAI_API_KEY" | grep -qi '^openai_api_key='; then
+          if printf '%s' "$CLEAN_KEY" | grep -qi '^openai_api_key='; then
             echo "::error::OPENAI_API_KEY looks like KEY=value. Store only the key value."
             exit 1
           fi
-          echo "Secrets present (OPENAI_API_KEY length=${KEY_LEN})."
+          echo "Secrets present (OPENAI_API_KEY length=${#CLEAN_KEY})."
+          # Expose cleaned key to later steps (no trailing newline).
+          echo "OPENAI_API_KEY=${CLEAN_KEY}" >> "$GITHUB_ENV"
 
       - name: Checkout Java PR code
         uses: actions/checkout@v5
@@ -83,7 +85,6 @@ jobs:
 
       - name: Run agent
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           JUDGE_MODEL: ${{ vars.JUDGE_MODEL || 'gpt-4o-mini' }}
           PATCH_MODEL: ${{ vars.PATCH_MODEL || 'gpt-4o-mini' }}
           TARGET_REPO_PATH: ${{ github.workspace }}
@@ -92,8 +93,6 @@ jobs:
           RESULT_JSON_PATH: ${{ github.workspace }}/agent-result.json
           RUN_TESTS: "false"
         run: |
-          # Strip accidental whitespace/newlines from the secret.
-          export OPENAI_API_KEY="$(printf '%s' "$OPENAI_API_KEY" | tr -d '\r\n' | sed -e 's/^["'\'']//' -e 's/["'\'']$//')"
           BASE_SHA="${{ github.event.pull_request.base.sha }}"
           CHANGED_JAVA="$(git diff --name-only --diff-filter=ACMR "${BASE_SHA}...HEAD" | grep '\.java$' || true)"
           if [ -n "$CHANGED_JAVA" ]; then
