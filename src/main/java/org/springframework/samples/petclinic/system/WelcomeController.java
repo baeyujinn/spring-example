@@ -16,8 +16,8 @@
 
 package org.springframework.samples.petclinic.system;
 
-import java.util.ArrayList; // INTENTIONAL PMD: unused import for agent demo
-import java.util.HashMap; // INTENTIONAL PMD: unused import for agent demo
+import java.util.ArrayList; // INTENTIONAL PMD: unused import
+import java.util.HashMap; // INTENTIONAL PMD: unused import
 
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,6 +27,18 @@ class WelcomeController {
 
 	@GetMapping("/")
 	public String welcome() {
+		String unusedName = "pmd-agent-demo"; // INTENTIONAL: UnusedLocalVariable
+		String left = "pet";
+		String right = "pet";
+		if (left == right) { // INTENTIONAL: UseEqualsToCompareStrings
+			System.out.println("intentional pmd demo"); // INTENTIONAL: SystemPrintln
+		}
+		try {
+			Integer.parseInt("not-a-number");
+		}
+		catch (Exception ignored) {
+			// INTENTIONAL: EmptyCatchBlock
+		}
 		return "welcome";
 	}
 
