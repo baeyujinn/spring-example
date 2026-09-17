@@ -1,0 +1,94 @@
+# Copy this file into the Java repository as:
+#   .github/workflows/pmd-agent.yml
+#
+# Target demo repo branch: lab/pmd-test
+# https://github.com/baeyujinn/spring-example/tree/lab/pmd-test
+
+name: PMD AI Agent
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  pmd-agent:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout Java PR code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install PMD
+        run: |
+          curl -sL https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.7.0/pmd-dist-7.7.0-bin.zip -o pmd.zip
+          unzip -q pmd.zip
+          echo "PMD_HOME=$GITHUB_WORKSPACE/pmd-bin-7.7.0" >> "$GITHUB_ENV"
+          echo "$GITHUB_WORKSPACE/pmd-bin-7.7.0/bin" >> "$GITHUB_PATH"
+
+      - name: Clone AI agent project
+        run: |
+          git clone --depth 1 https://github.com/baeyujinn/lotte-abc-final-pjt.git /tmp/pmd-agent
+          pip install -r /tmp/pmd-agent/requirements.txt
+
+      - name: Run agent
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          JUDGE_MODEL: ${{ vars.JUDGE_MODEL || 'gpt-4o-mini' }}
+          PATCH_MODEL: ${{ vars.PATCH_MODEL || 'gpt-4o-mini' }}
+          TARGET_REPO_PATH: ${{ github.workspace }}
+          PMD_SOURCE_DIR: src/main/java
+          PMD_REPORT_PATH: ${{ github.workspace }}/pmd-report.xml
+          RESULT_JSON_PATH: ${{ github.workspace }}/agent-result.json
+          RUN_TESTS: "false"
+        run: |
+          export PYTHONPATH=/tmp/pmd-agent/app
+          python /tmp/pmd-agent/app/main.py | tee agent-output.txt
+          # Keep agent-produced patches nearby for artifacts when available.
+          if [ -d /tmp/pmd-agent/data/patches ]; then
+            mkdir -p ./pmd-agent-patches
+            cp -R /tmp/pmd-agent/data/patches/. ./pmd-agent-patches/ || true
+          fi
+
+      - name: Post PR review comments
+        if: always() && hashFiles('agent-result.json') != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RESULT_JSON_PATH: ${{ github.workspace }}/agent-result.json
+        run: |
+          python /tmp/pmd-agent/scripts/post_pr_review.py \
+            --result-json "$RESULT_JSON_PATH" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pr-number "$PR_NUMBER" \
+            --commit-sha "$PR_HEAD_SHA"
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pmd-agent-output
+          path: |
+            agent-output.txt
+            agent-result.json
+            pmd-report.xml
+            pmd-agent-patches/
+          if-no-files-found: warn
